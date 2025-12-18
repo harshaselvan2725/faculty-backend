@@ -1,20 +1,23 @@
-const express = require("express");
+import express from "express";
+import Todo from "../models/Todo.js";
+import jwt from "jsonwebtoken";
+
 const router = express.Router();
-const Todo = require("../models/Todo");
-const jwt = require("jsonwebtoken");
 
 // AUTH MIDDLEWARE
 const auth = (req, res, next) => {
   const token = req.headers.authorization;
 
-  if (!token) return res.json({ error: "No token provided" });
+  if (!token) {
+    return res.status(401).json({ error: "No token provided" });
+  }
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = decoded;
     next();
-  } catch {
-    res.json({ error: "Invalid token" });
+  } catch (err) {
+    return res.status(401).json({ error: "Invalid token" });
   }
 };
 
@@ -31,7 +34,7 @@ router.post("/add", auth, async (req, res) => {
 
     res.json({ message: "Task Added", todo });
   } catch (err) {
-    res.json({ error: "Error adding task" });
+    res.status(500).json({ error: "Error adding task" });
   }
 });
 
@@ -41,9 +44,10 @@ router.get("/list", auth, async (req, res) => {
     const tasks = await Todo.find({ userId: req.user.id }).sort({
       createdAt: -1,
     });
+
     res.json({ tasks });
-  } catch {
-    res.json({ error: "Error fetching tasks" });
+  } catch (err) {
+    res.status(500).json({ error: "Error fetching tasks" });
   }
 });
 
@@ -55,9 +59,10 @@ router.put("/done/:id", auth, async (req, res) => {
       { completed: true },
       { new: true }
     );
+
     res.json({ message: "Task Marked as Done", task: updated });
-  } catch {
-    res.json({ error: "Error updating task" });
+  } catch (err) {
+    res.status(500).json({ error: "Error updating task" });
   }
 });
 
@@ -66,9 +71,9 @@ router.delete("/delete/:id", auth, async (req, res) => {
   try {
     await Todo.findByIdAndDelete(req.params.id);
     res.json({ message: "Task Deleted" });
-  } catch {
-    res.json({ error: "Error deleting task" });
+  } catch (err) {
+    res.status(500).json({ error: "Error deleting task" });
   }
 });
 
-module.exports = router;
+export default router;

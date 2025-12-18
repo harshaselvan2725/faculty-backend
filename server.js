@@ -1,83 +1,93 @@
-// server.js
 import express from "express";
 import mongoose from "mongoose";
 import cors from "cors";
 import multer from "multer";
+import dotenv from "dotenv";
 import { GridFSBucket } from "mongodb";
 
-// ROUTES
+// ==============================
+// IMPORT ROUTES
+// ==============================
+import todoRoutes from "./routes/todo.js";
 import authRoutes from "./routes/auth.js";
-import profileRoutes from "./routes/profile.js";
-import leaveRoutes from "./routes/leave.js";
-import syllabusRoutes from "./routes/syllabus.js";
+import leaveRoutes from "./routes/leave.js"; // ✅ IMPORTANT
+
+dotenv.config();
 
 const app = express();
 
-/* =========================
-   MIDDLEWARE
-========================= */
+// ==============================
+// MIDDLEWARE
+// ==============================
 app.use(cors());
 app.use(express.json());
 
-/* =========================
-   MONGODB CONNECTION (ATLAS)
-========================= */
+// ==============================
+// ENV VARIABLES
+// ==============================
+const MONGO_URI = process.env.MONGO_URI;
+const PORT = process.env.PORT || 10000;
+
+// ❗ SAFETY CHECK
+if (!MONGO_URI) {
+  console.error("❌ MONGO_URI is missing in .env");
+  process.exit(1);
+}
+
+// ==============================
+// MONGO CONNECTION
+// ==============================
 mongoose
-  .connect(process.env.MONGO_URI)
+  .connect(MONGO_URI)
   .then(() => console.log("MongoDB Connected ✔"))
-  .catch((err) => console.error("MongoDB Error:", err));
+  .catch((err) => {
+    console.error("MongoDB Error:", err);
+    process.exit(1);
+  });
 
 const conn = mongoose.connection;
-
 let bucket;
+
 conn.once("open", () => {
+  console.log("GridFS Bucket Ready ✔");
   bucket = new GridFSBucket(conn.db, {
     bucketName: "uploads",
   });
-  console.log("GridFS Bucket Ready ✔");
 });
 
-/* =========================
-   MULTER (PDF MEMORY STORAGE)
-========================= */
+// ==============================
+// MULTER MEMORY STORAGE
+// ==============================
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-/* =========================
-   BASIC TEST ROUTE
-========================= */
+// ==============================
+// TEST ROUTE
+// ==============================
 app.get("/", (req, res) => {
-  res.send("Faculty Backend Running 🚀");
+  res.send("Faculty Backend is running 🚀");
 });
 
-/* =========================
-   AUTH ROUTES
-========================= */
+// ==============================
+// REGISTER ROUTES
+// ==============================
 app.use("/auth", authRoutes);
+app.use("/todo", todoRoutes);
+app.use("/leave", leaveRoutes); // ✅ THIS FIXES DELETE / UPDATE
 
-/* =========================
-   PROFILE ROUTES
-========================= */
-app.use("/profile", profileRoutes);
-
-/* =========================
-   LEAVE ROUTES
-========================= */
-app.use("/leave", leaveRoutes);
-
-/* =========================
-   SYLLABUS ROUTES (PDF)
-========================= */
-
-// UPLOAD PDF
+// ==============================
+// SYLLABUS ROUTES
+// ==============================
 app.post("/syllabus/upload", upload.single("file"), (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ success: false, message: "No file uploaded" });
+      return res
+        .status(400)
+        .json({ success: false, message: "No file uploaded" });
     }
 
     const uploadStream = bucket.openUploadStream(req.file.originalname, {
-      contentType: "application/pdf",
+      contentType: req.file.mimetype,
     });
 
     uploadStream.end(req.file.buffer);
@@ -85,76 +95,49 @@ app.post("/syllabus/upload", upload.single("file"), (req, res) => {
     uploadStream.on("finish", () => {
       res.json({
         success: true,
-        message: "PDF uploaded successfully",
         fileId: uploadStream.id,
+        filename: req.file.originalname,
       });
     });
-
-    uploadStream.on("error", () => {
-      res.status(500).json({ success: false, message: "Upload failed" });
-    });
-
   } catch (err) {
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-});
-
-// LIST PDFs
-app.get("/syllabus/list", async (req, res) => {
-  try {
-    const files = await conn.db
-      .collection("uploads.files")
-      .find()
-      .sort({ uploadDate: -1 })
-      .toArray();
-
-    res.json({ success: true, files });
-  } catch (err) {
+    console.error("Upload Error:", err);
     res.status(500).json({ success: false });
   }
 });
 
-// OPEN PDF (PHONE PDF VIEWER)
+app.get("/syllabus/list", async (req, res) => {
+  const files = await conn.db
+    .collection("uploads.files")
+    .find()
+    .sort({ uploadDate: -1 })
+    .toArray();
+
+  res.json({ success: true, files });
+});
+
 app.get("/syllabus/pdf/:id", async (req, res) => {
   try {
     const fileId = new mongoose.Types.ObjectId(req.params.id);
-
     const file = await conn.db
       .collection("uploads.files")
       .findOne({ _id: fileId });
 
-    if (!file) {
-      return res.status(404).json({ success: false, message: "File not found" });
-    }
+    if (!file) return res.status(404).send("File not found");
 
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", "inline");
+    res.set({
+      "Content-Type": file.contentType || "application/pdf",
+      "Content-Disposition": `inline; filename="${file.filename}"`,
+    });
 
-    const downloadStream = bucket.openDownloadStream(fileId);
-    downloadStream.pipe(res);
-
+    bucket.openDownloadStream(fileId).pipe(res);
   } catch (err) {
-    res.status(400).json({ success: false, message: "Invalid file ID" });
+    res.status(400).send("Invalid file ID");
   }
 });
 
-// DELETE PDF
-app.delete("/syllabus/delete/:id", async (req, res) => {
-  try {
-    const fileId = new mongoose.Types.ObjectId(req.params.id);
-    await bucket.delete(fileId);
-
-    res.json({ success: true, message: "PDF deleted" });
-  } catch (err) {
-    res.status(500).json({ success: false });
-  }
-});
-
-/* =========================
-   START SERVER (RENDER SAFE)
-========================= */
-const PORT = process.env.PORT || 5000;
-
-app.listen(PORT, () => {
+// ==============================
+// START SERVER
+// ==============================
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });

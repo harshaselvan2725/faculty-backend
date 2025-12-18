@@ -1,13 +1,29 @@
-const mongoose = require("mongoose");
+import mongoose from "mongoose";
 
-const TodoSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+const todoSchema = new mongoose.Schema(
+  {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true,
+      ref: "User",
+    },
+    task: {
+      type: String,
+      required: true,
+    },
+    priority: {
+      type: String,
+      enum: ["Low", "Medium", "High"],
+      default: "Medium",
+    },
+    completed: {
+      type: Boolean,
+      default: false,
+    },
+  },
+  { timestamps: true }
+);
 
-  task: { type: String, required: true },
-  priority: { type: String, required: true },  // High / Medium / Low
-  completed: { type: Boolean, default: false },
+const Todo = mongoose.model("Todo", todoSchema);
 
-  createdAt: { type: Date, default: Date.now },
-});
-
-module.exports = mongoose.model("Todo", TodoSchema);
+export default Todo;
