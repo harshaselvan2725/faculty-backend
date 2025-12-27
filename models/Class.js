@@ -1,12 +1,11 @@
-const mongoose = require("mongoose");
+import mongoose from "mongoose";
 
 const ClassSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-
-  className: { type: String, required: true },
-  section: { type: String },
-
-  createdAt: { type: Date, default: Date.now },
+  name: { type: String, required: true },
+  columns: {
+    type: [String],
+    default: ["registerNo", "name", "phone"],
+  },
 });
 
-module.exports = mongoose.model("Class", ClassSchema);
+export default mongoose.model("Class", ClassSchema);

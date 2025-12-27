@@ -1,15 +1,13 @@
-const mongoose = require("mongoose");
+import mongoose from "mongoose";
 
 const AchievementSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-
   title: { type: String, required: true },
-  description: { type: String },
+  description: { type: String, required: true },
   date: { type: String, required: true },
 
-  image: { type: String },   // optional image URL for future upload
+  certificateUrl: { type: String }, // PDF / Image URL
 
   createdAt: { type: Date, default: Date.now },
 });
 
-module.exports = mongoose.model("Achievement", AchievementSchema);
+export default mongoose.model("Achievement", AchievementSchema);

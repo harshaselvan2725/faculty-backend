@@ -1,13 +1,31 @@
-const mongoose = require("mongoose");
+import mongoose from "mongoose";
 
-const SyllabusSchema = new mongoose.Schema({
-  userId: String,
-  subject: String,
-  driveFileId: String,
-  driveFileUrl: String,
-  createdAt: { type: Date, default: Date.now }
-});
+const SyllabusSchema = new mongoose.Schema(
+  {
+    userId: {
+      type: String,
+      required: true,
+    },
 
-module.exports = mongoose.model("Syllabus", SyllabusSchema);
+    subject: {
+      type: String,
+      required: true,
+    },
 
+    // 🔗 Reference to GridFS file
+    fileId: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true,
+    },
 
+    filename: {
+      type: String,
+      required: true,
+    },
+  },
+  {
+    timestamps: true, // createdAt & updatedAt
+  }
+);
+
+export default mongoose.model("Syllabus", SyllabusSchema);

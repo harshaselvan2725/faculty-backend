@@ -5,32 +5,44 @@ import { GridFSBucket } from "mongodb";
 
 const router = express.Router();
 
-// Multer memory storage
-const storage = multer.memoryStorage();
-const upload = multer({ storage });
+console.log("✅ syllabus routes loaded");
 
-// Mongo connection
-const conn = mongoose.connection;
-let bucket;
+// ===============================
+// MULTER (MEMORY STORAGE)
+// ===============================
+const upload = multer({ storage: multer.memoryStorage() });
 
-conn.once("open", () => {
-  bucket = new GridFSBucket(conn.db, {
-    bucketName: "uploads",
+// ===============================
+// SAFE GRIDFS BUCKET
+// ===============================
+const getBucket = () => {
+  if (!mongoose.connection.db) {
+    throw new Error("MongoDB not connected");
+  }
+
+  return new GridFSBucket(mongoose.connection.db, {
+    bucketName: "uploads", // change to "fs" ONLY if your DB uses fs.files
   });
-});
+};
 
 // --------------------
 // UPLOAD PDF
 // --------------------
-router.post("/upload", upload.single("file"), (req, res) => {
+router.post("/upload", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ success: false, message: "No file uploaded" });
+      return res.status(400).json({
+        success: false,
+        message: "No file uploaded",
+      });
     }
 
-    const uploadStream = bucket.openUploadStream(req.file.originalname, {
-      contentType: req.file.mimetype,
-    });
+    const bucket = getBucket();
+
+    const uploadStream = bucket.openUploadStream(
+      req.file.originalname,
+      { contentType: req.file.mimetype }
+    );
 
     uploadStream.end(req.file.buffer);
 
@@ -42,8 +54,8 @@ router.post("/upload", upload.single("file"), (req, res) => {
       });
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false });
+    console.error("UPLOAD ERROR:", err.message);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
@@ -52,41 +64,84 @@ router.post("/upload", upload.single("file"), (req, res) => {
 // --------------------
 router.get("/list", async (req, res) => {
   try {
-    const files = await conn.db
+    const files = await mongoose.connection.db
       .collection("uploads.files")
-      .find()
+      .find({})
       .sort({ uploadDate: -1 })
       .toArray();
 
     res.json({ success: true, files });
   } catch (err) {
-    res.status(500).json({ success: false });
+    console.error("LIST ERROR:", err.message);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
 // --------------------
-// VIEW PDF (PHONE PDF VIEWER)
+// VIEW PDF
 // --------------------
 router.get("/pdf/:id", (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid file ID",
+      });
+    }
+
+    const bucket = getBucket();
     const fileId = new mongoose.Types.ObjectId(req.params.id);
-    const downloadStream = bucket.openDownloadStream(fileId);
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", "inline");
 
-    downloadStream.pipe(res);
+    bucket.openDownloadStream(fileId).pipe(res);
   } catch (err) {
-    res.status(400).json({ success: false });
+    console.error("VIEW ERROR:", err.message);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
 // --------------------
-// DELETE PDF
+// DELETE PDF (POST – GUARANTEED WORKING ✅)
+// --------------------
+router.post("/delete/:id", async (req, res) => {
+  console.log("🔥 POST DELETE HIT:", req.params.id);
+
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid file ID",
+      });
+    }
+
+    const bucket = getBucket();
+    const fileId = new mongoose.Types.ObjectId(req.params.id);
+
+    await bucket.delete(fileId);
+
+    console.log("✅ FILE DELETED FROM GRIDFS");
+    res.json({ success: true });
+  } catch (err) {
+    console.error("❌ POST DELETE ERROR:", err.message);
+    res.status(500).json({
+      success: false,
+      error: err.message,
+    });
+  }
+});
+
+// --------------------
+// DELETE PDF (DELETE – OPTIONAL, may fail on Render)
 // --------------------
 router.delete("/delete/:id", async (req, res) => {
+  console.log("⚠️ DELETE METHOD HIT (may fail on Render)");
+
   try {
+    const bucket = getBucket();
     const fileId = new mongoose.Types.ObjectId(req.params.id);
+
     await bucket.delete(fileId);
     res.json({ success: true });
   } catch (err) {

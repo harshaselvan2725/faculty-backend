@@ -1,71 +1,80 @@
-const express = require("express");
+import express from "express";
+import multer from "multer";
+import Achievement from "../models/Achievement.js";
+
 const router = express.Router();
-const jwt = require("jsonwebtoken");
-const Achievement = require("../models/Achievement");
 
-// Middleware to check token
-const auth = (req, res, next) => {
-  const token = req.headers.authorization;
+// ================= MULTER =================
+const storage = multer.diskStorage({
+  destination: "uploads/",
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + "-" + file.originalname);
+  },
+});
 
-  if (!token) return res.json({ error: "No token provided" });
+const upload = multer({ storage });
 
+// ================= ROUTES =================
+
+// 📄 Get achievements
+router.get("/", async (req, res) => {
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
-    next();
-  } catch {
-    return res.json({ error: "Invalid token" });
-  }
-};
-
-//
-// =========================
-// ADD ACHIEVEMENT
-// =========================
-router.post("/add", auth, async (req, res) => {
-  const { title, description, date, image } = req.body;
-
-  try {
-    const achieve = await Achievement.create({
-      userId: req.user.id,
-      title,
-      description,
-      date,
-      image,
-    });
-
-    res.json({ message: "Achievement Added", achievement: achieve });
+    const list = await Achievement.find().sort({ createdAt: -1 });
+    res.json(list);
   } catch (err) {
-    res.json({ error: "Error adding achievement" });
+    res.status(500).json({ error: err.message });
   }
 });
 
-//
-// =========================
-// LIST MY ACHIEVEMENTS
-// =========================
-router.get("/list", auth, async (req, res) => {
+// ➕ Add achievement
+router.post("/", async (req, res) => {
   try {
-    const achievements = await Achievement.find({ userId: req.user.id }).sort({
-      date: -1,
-    });
-    res.json({ achievements });
+    const achievement = await Achievement.create(req.body);
+    res.json(achievement);
   } catch (err) {
-    res.json({ error: "Error fetching achievements" });
+    res.status(500).json({ error: err.message });
   }
 });
 
-//
-// =========================
-// DELETE ACHIEVEMENT
-// =========================
-router.delete("/delete/:id", auth, async (req, res) => {
+// ✏ Edit achievement
+router.put("/:id", async (req, res) => {
+  try {
+    const updated = await Achievement.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true }
+    );
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 📎 Upload certificate
+router.post("/upload/:id", upload.single("file"), async (req, res) => {
+  try {
+    const filePath = `/uploads/${req.file.filename}`;
+
+    const updated = await Achievement.findByIdAndUpdate(
+      req.params.id,
+      { certificateUrl: filePath },
+      { new: true }
+    );
+
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 🗑 Delete achievement
+router.delete("/:id", async (req, res) => {
   try {
     await Achievement.findByIdAndDelete(req.params.id);
-    res.json({ message: "Achievement Deleted" });
+    res.json({ success: true });
   } catch (err) {
-    res.json({ error: "Error deleting achievement" });
+    res.status(500).json({ error: err.message });
   }
 });
 
-module.exports = router;
+export default router;
