@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import cors from "cors";
 import dotenv from "dotenv";
 import ExcelJS from "exceljs";
+import fs from "fs";
 
 // ================= ROUTES =================
 import todoRoutes from "./routes/todo.js";
@@ -20,6 +21,12 @@ dotenv.config();
 // ================= CREATE APP =================
 const app = express();
 
+// ================= ENSURE UPLOADS FOLDER =================
+if (!fs.existsSync("uploads")) {
+  fs.mkdirSync("uploads");
+}
+
+// ================= MIDDLEWARE =================
 // ================= MIDDLEWARE =================
 app.use(
   cors({
@@ -28,8 +35,13 @@ app.use(
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
+
 app.options("*", cors());
-app.use(express.json());
+
+// 🔥 REQUIRED FOR RENDER + FILE UPLOADS
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+
 
 // ================= ENV =================
 const PORT = process.env.PORT || 10000;
@@ -54,7 +66,10 @@ app.use("/auth", authRoutes);
 app.use("/todo", todoRoutes);
 app.use("/leave", leaveRoutes);
 app.use("/achievements", achievementRoutes);
-app.use("/syllabus", syllabusRoutes); // ✅ IMPORTANT
+app.use("/syllabus", syllabusRoutes);
+
+// ✅ STATIC FILE SERVING (UPLOADS)
+app.use("/uploads", express.static("uploads"));
 
 // ================= CLASS MANAGEMENT =================
 
