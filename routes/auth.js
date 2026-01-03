@@ -12,7 +12,7 @@ router.post("/register", async (req, res) => {
 
     const { name, email, password } = req.body;
 
-    // 🔒 Basic validation
+    // Basic validation
     if (!name || !email || !password) {
       return res.status(400).json({
         success: false,
@@ -20,18 +20,15 @@ router.post("/register", async (req, res) => {
       });
     }
 
-    // 🔒 Email validation
-    if (
-      typeof email !== "string" ||
-      (!email.endsWith("@psgrkcw.ac.in") && !email.endsWith("@psgrkcw"))
-    ) {
+    // Email validation
+    if (!email.endsWith("@psgrkcw.ac.in")) {
       return res.status(400).json({
         success: false,
         message: "Only PSGRKCW email allowed",
       });
     }
 
-    // 🔍 Check existing user
+    // Check existing user
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(409).json({
@@ -40,24 +37,22 @@ router.post("/register", async (req, res) => {
       });
     }
 
-    // 🔐 Hash password
+    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // 💾 Save user
-    const user = new User({
+    // Save user
+    await User.create({
       name,
       email,
       password: hashedPassword,
     });
-
-    await user.save();
 
     return res.status(201).json({
       success: true,
       message: "Registration successful",
     });
   } catch (err) {
-    console.error("REGISTER ERROR FULL:", err);
+    console.error("REGISTER ERROR:", err);
     return res.status(500).json({
       success: false,
       message: "Server error",
@@ -81,9 +76,9 @@ router.post("/login", async (req, res) => {
 
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(404).json({
+      return res.status(401).json({
         success: false,
-        message: "User not found",
+        message: "Invalid email or password",
       });
     }
 
@@ -91,19 +86,19 @@ router.post("/login", async (req, res) => {
     if (!isMatch) {
       return res.status(401).json({
         success: false,
-        message: "Invalid password",
+        message: "Invalid email or password",
       });
     }
 
+    // ⚠️ JWT_SECRET MUST exist in Railway variables
     const token = jwt.sign(
       { id: user._id },
-      process.env.JWT_SECRET || "SECRET_KEY",
+      process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
 
     return res.status(200).json({
       success: true,
-      message: "Login successful",
       token,
       user: {
         id: user._id,
@@ -112,7 +107,7 @@ router.post("/login", async (req, res) => {
       },
     });
   } catch (err) {
-    console.error("LOGIN ERROR FULL:", err);
+    console.error("LOGIN ERROR:", err);
     return res.status(500).json({
       success: false,
       message: "Server error",
