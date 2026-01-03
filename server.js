@@ -18,10 +18,9 @@ import StudentModel from "./models/Student.js";
 
 dotenv.config();
 
-// ================= CREATE APP =================
 const app = express();
 
-// ================= ENSURE UPLOADS FOLDER =================
+// ================= ENSURE UPLOADS =================
 if (!fs.existsSync("uploads")) {
   fs.mkdirSync("uploads");
 }
@@ -30,33 +29,22 @@ if (!fs.existsSync("uploads")) {
 app.use(
   cors({
     origin: "*",
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
-app.options("*", cors());
+app.use(express.json({ limit: "20mb" }));
+app.use(express.urlencoded({ extended: true, limit: "20mb" }));
 
-// 🔥 REQUIRED FOR FILE UPLOADS
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
-
-// ================= ENV =================
-const MONGO_URI = process.env.MONGO_URI;
-
-// ================= DB =================
+// ================= DATABASE =================
 mongoose
-  .connect(MONGO_URI)
+  .connect(process.env.MONGO_URI)
   .then(() => console.log("MongoDB Connected ✔"))
   .catch((err) => {
     console.error("MongoDB Error:", err.message);
     process.exit(1);
   });
-
-// ================= HEALTH CHECK (🔥 REQUIRED FOR RAILWAY) =================
-app.get("/health", (req, res) => {
-  res.status(200).send("OK");
-});
 
 // ================= ROOT =================
 app.get("/", (req, res) => {
@@ -70,12 +58,10 @@ app.use("/leave", leaveRoutes);
 app.use("/achievements", achievementRoutes);
 app.use("/syllabus", syllabusRoutes);
 
-// ================= STATIC FILES =================
+// ================= STATIC =================
 app.use("/uploads", express.static("uploads"));
 
-// ================= CLASS MANAGEMENT =================
-
-// ➕ Create Class
+// ================= CLASS =================
 app.post("/class", async (req, res) => {
   try {
     const cls = await ClassModel.create({ name: req.body.name });
@@ -85,7 +71,6 @@ app.post("/class", async (req, res) => {
   }
 });
 
-// 📄 Get All Classes
 app.get("/class", async (req, res) => {
   try {
     const classes = await ClassModel.find().sort({ _id: -1 });
@@ -95,7 +80,6 @@ app.get("/class", async (req, res) => {
   }
 });
 
-// 📄 Get Single Class
 app.get("/class/:id", async (req, res) => {
   try {
     const cls = await ClassModel.findById(req.params.id);
@@ -106,7 +90,6 @@ app.get("/class/:id", async (req, res) => {
   }
 });
 
-// 🧩 Update Columns
 app.put("/class/:id/columns", async (req, res) => {
   try {
     const cls = await ClassModel.findByIdAndUpdate(
@@ -121,30 +104,24 @@ app.put("/class/:id/columns", async (req, res) => {
 });
 
 // ================= STUDENTS =================
-
-// ➕ Add Student
 app.post("/student", async (req, res) => {
   try {
     const student = await StudentModel.create(req.body);
     res.json(student);
   } catch (err) {
-    res.status(500).json(formData({ error: err.message }));
+    res.status(500).json({ error: err.message }); // ✅ FIXED
   }
 });
 
-// 📄 Get Students
 app.get("/students/:classId", async (req, res) => {
   try {
-    const students = await StudentModel.find({
-      classId: req.params.classId,
-    });
+    const students = await StudentModel.find({ classId: req.params.classId });
     res.json(students);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// ✏ Edit Student
 app.put("/student/:id", async (req, res) => {
   try {
     const student = await StudentModel.findByIdAndUpdate(
@@ -158,7 +135,6 @@ app.put("/student/:id", async (req, res) => {
   }
 });
 
-// 🗑 Delete Student
 app.delete("/student/:id", async (req, res) => {
   try {
     await StudentModel.findByIdAndDelete(req.params.id);
@@ -168,15 +144,13 @@ app.delete("/student/:id", async (req, res) => {
   }
 });
 
-// ================= EXPORT TO EXCEL =================
+// ================= EXPORT =================
 app.get("/class/:classId/export", async (req, res) => {
   try {
     const cls = await ClassModel.findById(req.params.classId);
     if (!cls) return res.status(404).json({ error: "Class not found" });
 
-    const students = await StudentModel.find({
-      classId: req.params.classId,
-    });
+    const students = await StudentModel.find({ classId: req.params.classId });
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("Students");
@@ -201,13 +175,12 @@ app.get("/class/:classId/export", async (req, res) => {
     await workbook.xlsx.write(res);
     res.end();
   } catch (err) {
-    console.error("Excel Error:", err.message);
     res.status(500).json({ error: "Excel export failed" });
   }
 });
 
-// ================= START SERVER =================
-const PORT = Number(process.env.PORT);
+// ================= START =================
+const PORT = process.env.PORT || 8080;
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Server running on port ${PORT}`);

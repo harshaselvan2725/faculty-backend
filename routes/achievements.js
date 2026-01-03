@@ -1,80 +1,90 @@
 import express from "express";
 import multer from "multer";
+import mongoose from "mongoose";
+import { GridFSBucket } from "mongodb";
 import Achievement from "../models/Achievement.js";
 
 const router = express.Router();
 
-// ================= MULTER =================
-const storage = multer.diskStorage({
-  destination: "uploads/",
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + "-" + file.originalname);
-  },
-});
+// ===============================
+// MULTER (MEMORY STORAGE – SAME AS SYLLABUS)
+// ===============================
+const upload = multer({ storage: multer.memoryStorage() });
 
-const upload = multer({ storage });
+// ===============================
+// GRIDFS BUCKET
+// ===============================
+const getBucket = () => {
+  if (!mongoose.connection.db) {
+    throw new Error("MongoDB not connected");
+  }
 
-// ================= ROUTES =================
+  return new GridFSBucket(mongoose.connection.db, {
+    bucketName: "uploads",
+  });
+};
 
-// 📄 Get achievements
+// ===============================
+// GET ACHIEVEMENTS
+// ===============================
 router.get("/", async (req, res) => {
-  try {
-    const list = await Achievement.find().sort({ createdAt: -1 });
-    res.json(list);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  const list = await Achievement.find().sort({ createdAt: -1 });
+  res.json(list);
 });
 
-// ➕ Add achievement
-router.post("/", async (req, res) => {
+// ===============================
+// ADD ACHIEVEMENT + CERTIFICATE (GRIDFS)
+// ===============================
+router.post("/", upload.single("file"), async (req, res) => {
   try {
-    const achievement = await Achievement.create(req.body);
-    res.json(achievement);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+    console.log("BODY:", req.body);
+    console.log("FILE:", req.file ? "YES" : "NO");
 
-// ✏ Edit achievement
-router.put("/:id", async (req, res) => {
-  try {
-    const updated = await Achievement.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true }
-    );
-    res.json(updated);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "Certificate required",
+      });
+    }
 
-// 📎 Upload certificate
-router.post("/upload/:id", upload.single("file"), async (req, res) => {
-  try {
-    const filePath = `/uploads/${req.file.filename}`;
+    const bucket = getBucket();
 
-    const updated = await Achievement.findByIdAndUpdate(
-      req.params.id,
-      { certificateUrl: filePath },
-      { new: true }
+    const uploadStream = bucket.openUploadStream(
+      req.file.originalname,
+      { contentType: req.file.mimetype }
     );
 
-    res.json(updated);
+    uploadStream.end(req.file.buffer);
+
+    uploadStream.on("finish", async () => {
+      const achievement = await Achievement.create({
+        title: req.body.title,
+        description: req.body.description,
+        date: req.body.date,
+        fileId: uploadStream.id,
+        filename: req.file.originalname,
+      });
+
+      res.json({ success: true, achievement });
+    });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("❌ ACHIEVEMENT UPLOAD ERROR:", err.message);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// 🗑 Delete achievement
+// ===============================
+// DELETE ACHIEVEMENT + FILE
+// ===============================
 router.delete("/:id", async (req, res) => {
-  try {
-    await Achievement.findByIdAndDelete(req.params.id);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  const ach = await Achievement.findById(req.params.id);
+  if (!ach) return res.json({ success: true });
+
+  const bucket = getBucket();
+  await bucket.delete(ach.fileId);
+  await Achievement.findByIdAndDelete(req.params.id);
+
+  res.json({ success: true });
 });
 
 export default router;
